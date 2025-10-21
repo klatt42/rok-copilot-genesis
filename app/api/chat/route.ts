@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
+import { createMessage } from '@/lib/db/messages'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -7,7 +8,7 @@ const anthropic = new Anthropic({
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages } = await request.json()
+    const { messages, conversationId } = await request.json()
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json(
@@ -32,6 +33,19 @@ export async function POST(request: NextRequest) {
     const content = response.content[0]
     if (content.type !== 'text') {
       throw new Error('Unexpected response type')
+    }
+
+    // Save assistant message to database if conversationId is provided
+    if (conversationId) {
+      const cost = (response.usage.input_tokens * 0.003 + response.usage.output_tokens * 0.015) / 1000
+      await createMessage(
+        conversationId,
+        'assistant',
+        content.text,
+        response.model,
+        response.usage.input_tokens + response.usage.output_tokens,
+        cost
+      )
     }
 
     return NextResponse.json({
